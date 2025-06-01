@@ -295,6 +295,86 @@ const getInitialAchievements = (): Achievement[] => [
     autoCollect: true,
     resetOnClaim: false,
     reward: { type: 'multiplier' as const, amount: 0.3 } // +30% typing damage
+  },
+
+  // New Resource & Money Achievements
+  {
+    id: 'money-millionaire',
+    name: 'Millionaire',
+    description: 'Accumulate 1,000,000 money',
+    icon: '💰',
+    requirement: 1000000,
+    progress: 0,
+    completed: false,
+    claimed: false,
+    autoCollect: false,
+    resetOnClaim: false,
+    reward: { type: 'experience' as const, amount: 1000000 }
+  },
+  {
+    id: 'money-spender',
+    name: 'Big Spender',
+    description: 'Spend 500,000 money in the shop',
+    icon: '🛍️',
+    requirement: 500000,
+    progress: 0,
+    completed: false,
+    claimed: false,
+    autoCollect: false,
+    resetOnClaim: false,
+    reward: { type: 'experience' as const, amount: 500000 }
+  },
+  {
+    id: 'scrap-hoarder',
+    name: 'Scrap Hoarder',
+    description: 'Accumulate 100,000 scrap',
+    icon: '🔧',
+    requirement: 100000,
+    progress: 0,
+    completed: false,
+    claimed: false,
+    autoCollect: false,
+    resetOnClaim: false,
+    reward: { type: 'resource' as const, amount: 100000, resource: 'Scrap' }
+  },
+  {
+    id: 'energy-master',
+    name: 'Energy Master',
+    description: 'Accumulate 50,000 energy',
+    icon: '⚡',
+    requirement: 50000,
+    progress: 0,
+    completed: false,
+    claimed: false,
+    autoCollect: false,
+    resetOnClaim: false,
+    reward: { type: 'resource' as const, amount: 50000, resource: 'Energy' }
+  },
+  {
+    id: 'resource-production',
+    name: 'Resource Baron',
+    description: 'Reach 1,000 combined resource production per second',
+    icon: '📈',
+    requirement: 1000,
+    progress: 0,
+    completed: false,
+    claimed: false,
+    autoCollect: false,
+    resetOnClaim: false,
+    reward: { type: 'experience' as const, amount: 1000 }
+  },
+  {
+    id: 'arsenal-collector',
+    name: 'Arsenal Collector',
+    description: 'Own all weapons in the gun shop',
+    icon: '🔫',
+    requirement: 5,
+    progress: 0,
+    completed: false,
+    claimed: false,
+    autoCollect: false,
+    resetOnClaim: false,
+    reward: { type: 'resource' as const, amount: 5, resource: 'Weapons' }
   }
 ];
 

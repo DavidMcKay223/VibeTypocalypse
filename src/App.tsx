@@ -8,6 +8,7 @@ import { Achievements } from './components/Achievements';
 import { useGameStore } from './store/gameStore';
 import { useAchievementStore } from './store/achievementStore';
 import { AchievementNotification } from './components/AchievementNotification';
+import { ActiveBuffs } from './components/ActiveBuffs';
 
 const App: React.FC = () => {
   const [showShop, setShowShop] = useState(false);
@@ -21,7 +22,8 @@ const App: React.FC = () => {
     accuracy,
     resources,
     resetGame,
-    calculateAutoAttackDamage
+    calculateAutoAttackDamage,
+    money
   } = useGameStore();
   
   const { pendingNotification, clearNotification } = useAchievementStore();
@@ -37,6 +39,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
+      <ActiveBuffs />
       {pendingNotification && (
         <AchievementNotification
           achievement={pendingNotification}
@@ -109,34 +112,49 @@ const App: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 bg-gray-800 p-4 rounded-lg">
-          <div>
-            <div className="text-gray-400">Level</div>
-            <div className="text-xl">{level}</div>
-          </div>
-          <div>
-            <div className="text-gray-400">Experience</div>
-            <div className="text-xl">{experience}</div>
-          </div>
-          <div>
-            <div className="text-gray-400">Typing Speed</div>
-            <div className="text-xl">{typingSpeed} WPM</div>
-          </div>
-          <div>
-            <div className="text-gray-400">Accuracy</div>
-            <div className="text-xl">{accuracy}%</div>
-          </div>
-          <div>
-            <div className="text-gray-400">Auto Attack</div>
-            <div className="text-xl text-yellow-400">{Math.floor(autoAttackDamage)} DMG</div>
-          </div>
-          {resources.map(resource => (
-            <div key={resource.name}>
-              <div className="text-gray-400">{resource.name}</div>
-              <div className="text-xl">{Math.floor(resource.amount)}</div>
-              <div className="text-sm text-gray-400">+{resource.perSecond}/s</div>
+        <div className="bg-gray-800 p-4 rounded-lg space-y-4">
+          {/* Player Stats Row */}
+          <div className="grid grid-cols-4 gap-4">
+            <div className="bg-gray-700 p-3 rounded-lg">
+              <div className="text-gray-400 text-sm">Level</div>
+              <div className="text-2xl font-bold">{level}</div>
+              <div className="text-xs text-gray-400">EXP: {experience}</div>
             </div>
-          ))}
+            <div className="bg-gray-700 p-3 rounded-lg">
+              <div className="text-gray-400 text-sm">Auto Attack</div>
+              <div className="text-2xl font-bold text-yellow-400">
+                {Math.floor(calculateAutoAttackDamage()).toLocaleString()} DMG
+              </div>
+              <div className="text-xs text-gray-400">Double damage on click</div>
+            </div>
+            <div className="bg-gray-700 p-3 rounded-lg">
+              <div className="text-gray-400 text-sm">Typing Speed</div>
+              <div className="text-2xl font-bold text-green-400">{typingSpeed} WPM</div>
+              <div className="text-xs text-gray-400">Accuracy: {accuracy}%</div>
+            </div>
+            <div className="bg-gray-700 p-3 rounded-lg">
+              <div className="text-gray-400 text-sm">Money</div>
+              <div className="text-2xl font-bold text-yellow-400">
+                💰 {Math.floor(money).toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-400">Buy upgrades in shop</div>
+            </div>
+          </div>
+
+          {/* Resources Row */}
+          <div className="grid grid-cols-2 gap-4">
+            {resources.map(resource => (
+              <div key={resource.name} className="bg-gray-700 p-3 rounded-lg">
+                <div className="text-gray-400 text-sm">{resource.name}</div>
+                <div className="text-2xl font-bold">
+                  {Math.floor(resource.amount).toLocaleString()}
+                </div>
+                <div className="text-xs text-green-400">
+                  +{resource.perSecond.toLocaleString()}/s
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </header>
 

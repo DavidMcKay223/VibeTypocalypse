@@ -22,14 +22,17 @@ interface Upgrade {
   name: string;
   description: string;
   cost: { 
-    resource?: { name: string; amount: number };
-    levels?: number;
+    resource?: { 
+      name: string; 
+      amount: number; 
+    } | undefined;
+    levels?: number | undefined;
   };
-  type: 'typing' | 'factory' | 'combat' | 'prestige';
+  type: 'typing' | 'factory' | 'combat' | 'prestige' | 'permanent' | 'consumable';
   effect: {
-    stat: string;
-    value: number;
-    permanent?: boolean;
+    type: string;
+    multiplier: number;
+    duration?: number;
   };
   purchased: boolean;
   requiresLevel?: number;
@@ -51,6 +54,19 @@ interface Factory {
     autoAttackBonus?: number;
     experienceBonus?: number;
     resourceBonus?: number;
+  };
+}
+
+interface ShopItem {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  type: 'permanent' | 'consumable';
+  effect: {
+    type: string;
+    multiplier: number;
+    duration?: number;
   };
 }
 
@@ -80,12 +96,27 @@ interface GameState {
   typingDamageMultiplier: number;
   purchasedGuns: string[];
   
+  // Buffs
+  activeBuffs: {
+    id: string;
+    type: string;
+    multiplier: number;
+    endTime: number;
+  }[];
+  permanentMultipliers: {
+    damage: number;
+    resource: number;
+    experience: number;
+    money: number;
+    all: number;
+  };
+  
   // Methods
   addExperience: (amount: number) => void;
   updateResource: (resourceName: string, amount: number) => void;
   spawnWave: () => void;
   incrementWave: () => void;
-  damageEnemy: (enemyId: string, damage: number) => void;
+  damageEnemy: (enemyId: string, damage: number, splashCount?: number) => void;
   updateTypingStats: (wpm: number, accuracy: number) => void;
   purchaseUpgrade: (upgradeId: string) => void;
   upgradeFactory: (factoryId: string) => void;
@@ -93,11 +124,174 @@ interface GameState {
   resetGame: () => void;
   calculateAutoAttackDamage: () => number;
   purchaseGun: (gunId: string) => void;
+  applyBuff: (buffId: string, type: string, multiplier: number, duration: number) => void;
+  removeBuff: (buffId: string) => void;
+  getActiveBuffMultiplier: (type: string) => number;
 }
 
 interface GameStateUpdates extends Partial<GameState> {
   [key: string]: any;
 }
+
+// Update all upgrade effects in initial state
+const initialUpgrades: Upgrade[] = [
+  {
+    id: 'typing-speed-1',
+    name: 'Swift Fingers',
+    description: 'Increase typing damage by 25%',
+    cost: { resource: { name: 'Scrap', amount: 100 } },
+    type: 'typing',
+    effect: { type: 'typing', multiplier: 1.25 },
+    purchased: false
+  },
+  {
+    id: 'factory-1',
+    name: 'Advanced Automation',
+    description: 'Increase factory production by 50%',
+    cost: { resource: { name: 'Energy', amount: 150 } },
+    type: 'factory',
+    effect: { type: 'resource', multiplier: 1.5 },
+    purchased: false
+  },
+  {
+    id: 'combat-1',
+    name: 'Auto-Turret',
+    description: 'Double auto-attack damage',
+    cost: { resource: { name: 'Scrap', amount: 200 } },
+    type: 'combat',
+    effect: { type: 'damage', multiplier: 2 },
+    purchased: false
+  },
+  {
+    id: 'prestige-typing-mastery',
+    name: 'Typing Mastery',
+    description: 'Sacrifice 5 levels to permanently increase typing damage by 100%',
+    cost: { levels: 5 },
+    type: 'prestige',
+    requiresLevel: 10,
+    effect: { type: 'typing', multiplier: 2 },
+    purchased: false
+  },
+  {
+    id: 'prestige-resource-mastery',
+    name: 'Resource Mastery',
+    description: 'Sacrifice 8 levels to permanently increase all resource generation by 150%',
+    cost: { levels: 8 },
+    type: 'prestige',
+    requiresLevel: 15,
+    effect: { type: 'resource', multiplier: 2.5 },
+    purchased: false
+  },
+  {
+    id: 'prestige-combat-mastery',
+    name: 'Combat Mastery',
+    description: 'Sacrifice 10 levels to permanently increase auto-attack damage by 200%',
+    cost: { levels: 10 },
+    type: 'prestige',
+    requiresLevel: 20,
+    effect: { type: 'damage', multiplier: 3 },
+    purchased: false
+  },
+  {
+    id: 'prestige-exp-boost',
+    name: 'Experience Mastery',
+    description: 'Sacrifice 12 levels to permanently gain 50% more experience from all sources',
+    cost: { levels: 12 },
+    type: 'prestige',
+    requiresLevel: 25,
+    effect: { type: 'experience', multiplier: 1.5 },
+    purchased: false
+  },
+  {
+    id: 'prestige-quantum-mastery',
+    name: 'Quantum Mastery',
+    description: 'Sacrifice 15 levels to permanently increase ALL damage and production by 100%',
+    cost: { levels: 15 },
+    type: 'prestige',
+    requiresLevel: 30,
+    effect: { type: 'all', multiplier: 2 },
+    purchased: false
+  }
+];
+
+// Shop item definitions
+export const shopItems: ShopItem[] = [
+  // Permanent Upgrades
+  {
+    id: 'damage-boost',
+    name: 'Damage Amplifier',
+    description: 'Permanently increase all damage by 25%',
+    cost: 50000,
+    type: 'permanent',
+    effect: { type: 'damage', multiplier: 1.25 }
+  },
+  {
+    id: 'resource-boost',
+    name: 'Resource Synthesizer',
+    description: 'Permanently increase all resource production by 50%',
+    cost: 75000,
+    type: 'permanent',
+    effect: { type: 'resource', multiplier: 1.5 }
+  },
+  {
+    id: 'exp-boost',
+    name: 'Experience Catalyst',
+    description: 'Permanently increase experience gain by 100%',
+    cost: 100000,
+    type: 'permanent',
+    effect: { type: 'experience', multiplier: 2 }
+  },
+  {
+    id: 'money-boost',
+    name: 'Money Printer',
+    description: 'Permanently increase money rewards by 75%',
+    cost: 150000,
+    type: 'permanent',
+    effect: { type: 'money', multiplier: 1.75 }
+  },
+  {
+    id: 'ultimate-boost',
+    name: 'Ultimate Enhancer',
+    description: 'Permanently increase ALL gains by 50%',
+    cost: 500000,
+    type: 'permanent',
+    effect: { type: 'all', multiplier: 1.5 }
+  },
+  
+  // Consumable Power-ups
+  {
+    id: 'damage-potion',
+    name: 'Damage Potion',
+    description: 'Triple damage for 5 minutes',
+    cost: 5000,
+    type: 'consumable',
+    effect: { type: 'damage', multiplier: 3, duration: 300 }
+  },
+  {
+    id: 'resource-potion',
+    name: 'Resource Potion',
+    description: 'Double resource production for 10 minutes',
+    cost: 7500,
+    type: 'consumable',
+    effect: { type: 'resource', multiplier: 2, duration: 600 }
+  },
+  {
+    id: 'exp-potion',
+    name: 'Experience Potion',
+    description: 'Double experience gain for 15 minutes',
+    cost: 10000,
+    type: 'consumable',
+    effect: { type: 'experience', multiplier: 2, duration: 900 }
+  },
+  {
+    id: 'mega-potion',
+    name: 'Mega Potion',
+    description: 'Double ALL gains for 30 minutes',
+    cost: 25000,
+    type: 'consumable',
+    effect: { type: 'all', multiplier: 2, duration: 1800 }
+  }
+];
 
 export const useGameStore = create<GameState>()(
   persist(
@@ -119,6 +313,14 @@ export const useGameStore = create<GameState>()(
       productionMultiplier: 1,
       typingDamageMultiplier: 1,
       purchasedGuns: [],
+      activeBuffs: [],
+      permanentMultipliers: {
+        damage: 1,
+        resource: 1,
+        experience: 1,
+        money: 1,
+        all: 1
+      },
 
       // Factories
       factories: [
@@ -266,108 +468,7 @@ export const useGameStore = create<GameState>()(
       ],
       
       // Shop
-      availableUpgrades: [
-        // Resource-based upgrades
-        {
-          id: 'typing-speed-1',
-          name: 'Swift Fingers',
-          description: 'Increase typing damage by 25%',
-          cost: { resource: { name: 'Scrap', amount: 100 } },
-          type: 'typing',
-          effect: { stat: 'typingDamageMultiplier', value: 1.25 },
-          purchased: false
-        },
-        {
-          id: 'factory-1',
-          name: 'Advanced Automation',
-          description: 'Increase factory production by 50%',
-          cost: { resource: { name: 'Energy', amount: 150 } },
-          type: 'factory',
-          effect: { stat: 'productionMultiplier', value: 1.5 },
-          purchased: false
-        },
-        {
-          id: 'combat-1',
-          name: 'Auto-Turret',
-          description: 'Double auto-attack damage',
-          cost: { resource: { name: 'Scrap', amount: 200 } },
-          type: 'combat',
-          effect: { stat: 'autoAttackDamage', value: 2 },
-          purchased: false
-        },
-
-        // Level-based prestige upgrades
-        {
-          id: 'prestige-typing-mastery',
-          name: 'Typing Mastery',
-          description: 'Sacrifice 5 levels to permanently increase typing damage by 100%',
-          cost: { levels: 5 },
-          type: 'prestige',
-          requiresLevel: 10,
-          effect: { 
-            stat: 'typingDamageMultiplier', 
-            value: 2,
-            permanent: true
-          },
-          purchased: false
-        },
-        {
-          id: 'prestige-resource-mastery',
-          name: 'Resource Mastery',
-          description: 'Sacrifice 8 levels to permanently increase all resource generation by 150%',
-          cost: { levels: 8 },
-          type: 'prestige',
-          requiresLevel: 15,
-          effect: { 
-            stat: 'productionMultiplier', 
-            value: 2.5,
-            permanent: true
-          },
-          purchased: false
-        },
-        {
-          id: 'prestige-combat-mastery',
-          name: 'Combat Mastery',
-          description: 'Sacrifice 10 levels to permanently increase auto-attack damage by 200%',
-          cost: { levels: 10 },
-          type: 'prestige',
-          requiresLevel: 20,
-          effect: { 
-            stat: 'autoAttackDamage', 
-            value: 3,
-            permanent: true
-          },
-          purchased: false
-        },
-        {
-          id: 'prestige-exp-boost',
-          name: 'Experience Mastery',
-          description: 'Sacrifice 12 levels to permanently gain 50% more experience from all sources',
-          cost: { levels: 12 },
-          type: 'prestige',
-          requiresLevel: 25,
-          effect: { 
-            stat: 'experienceMultiplier', 
-            value: 1.5,
-            permanent: true
-          },
-          purchased: false
-        },
-        {
-          id: 'prestige-quantum-mastery',
-          name: 'Quantum Mastery',
-          description: 'Sacrifice 15 levels to permanently increase ALL damage and production by 100%',
-          cost: { levels: 15 },
-          type: 'prestige',
-          requiresLevel: 30,
-          effect: { 
-            stat: 'globalMultiplier', 
-            value: 2,
-            permanent: true
-          },
-          purchased: false
-        }
-      ],
+      availableUpgrades: initialUpgrades,
       
       // Methods
       addExperience: (amount: number) => set((state) => {
@@ -391,10 +492,12 @@ export const useGameStore = create<GameState>()(
       }),
 
       updateResource: (resourceName: string, amount: number) => set((state) => {
+        const buffMultiplier = state.getActiveBuffMultiplier('resource');
+        
         // Calculate total resource bonus from factories
         const resourceBonus = state.factories.reduce((bonus, factory) => {
           if (factory.active && factory.effects.resourceBonus) {
-            return bonus + (factory.effects.resourceBonus * factory.level);
+            return bonus * (1 + factory.effects.resourceBonus * factory.level);
           }
           return bonus;
         }, 1);
@@ -426,8 +529,7 @@ export const useGameStore = create<GameState>()(
             resource.name === resourceName
               ? { 
                   ...resource, 
-                  amount: resource.amount + (amount * resourceBonus),
-                  perSecond: resourceRates[resource.name as keyof typeof resourceRates]
+                  amount: resource.amount + (amount * resourceBonus * buffMultiplier)
                 }
               : {
                   ...resource,
@@ -442,32 +544,35 @@ export const useGameStore = create<GameState>()(
         const state = get();
         const baseAutoAttackDamage = state.baseDamage;
         
-        // Calculate bonus from factories
+        // Calculate bonus from factories (multiplicative)
         const autoAttackBonus = state.factories.reduce((bonus, factory) => {
           if (factory.active && factory.effects.autoAttackBonus) {
-            return bonus + (factory.effects.autoAttackBonus * factory.level);
+            return bonus * (1 + factory.effects.autoAttackBonus * factory.level);
           }
           return bonus;
-        }, 0);
+        }, 1);
 
-        // Apply gun bonuses
+        // Apply gun bonuses (multiplicative)
         const gunBonus = state.purchasedGuns.reduce((bonus, gunId) => {
           const gun = gunUpgrades.find(g => g.id === gunId);
-          return bonus + (gun?.damageBonus || 0);
-        }, 0);
+          return bonus * (1 + (gun?.damageBonus || 0) / 100);
+        }, 1);
 
-        return baseAutoAttackDamage * (1 + autoAttackBonus + gunBonus);
+        // Apply active buffs and permanent multipliers
+        const buffMultiplier = state.getActiveBuffMultiplier('damage');
+
+        return Math.floor(baseAutoAttackDamage * autoAttackBonus * gunBonus * buffMultiplier);
       },
 
       spawnWave: () => set(state => {
-        const baseHealth = 50;
-        const healthScaling = 1.15; // 15% increase per wave
+        const baseHealth = 100;
+        const healthScaling = 1.25; // 25% increase per wave
         const waveHealthMultiplier = Math.pow(healthScaling, state.wave - 1);
         
         const newEnemies = Array(state.wave).fill(null).map((_, index) => ({
           id: `enemy-${state.wave}-${index}`,
-          health: Math.floor(baseHealth * waveHealthMultiplier * state.wave),
-          maxHealth: Math.floor(baseHealth * waveHealthMultiplier * state.wave),
+          health: Math.floor(baseHealth * waveHealthMultiplier),
+          maxHealth: Math.floor(baseHealth * waveHealthMultiplier),
           damage: Math.floor(5 * Math.pow(1.1, state.wave - 1)),
           type: 'zombie',
           reward: Math.floor(25 * Math.pow(1.1, state.wave - 1))
@@ -483,59 +588,90 @@ export const useGameStore = create<GameState>()(
         accuracy: accuracy,
       })),
 
-      purchaseUpgrade: (upgradeId: string) => set((state) => {
+      purchaseUpgrade: (upgradeId: string) => set(state => {
+        // First check shop items
+        const shopItem = shopItems.find(item => item.id === upgradeId);
+        if (shopItem) {
+          if (state.money < shopItem.cost) return state;
+
+          const updates: Partial<GameState> = {
+            money: state.money - shopItem.cost
+          };
+
+          if (shopItem.type === 'permanent') {
+            updates.permanentMultipliers = {
+              ...state.permanentMultipliers,
+              [shopItem.effect.type]: 
+                (state.permanentMultipliers[shopItem.effect.type as keyof typeof state.permanentMultipliers] || 1) * 
+                shopItem.effect.multiplier
+            };
+          } else if (shopItem.type === 'consumable' && shopItem.effect.duration) {
+            state.applyBuff(
+              shopItem.id,
+              shopItem.effect.type,
+              shopItem.effect.multiplier,
+              shopItem.effect.duration
+            );
+          }
+
+          return updates;
+        }
+
+        // Then check regular upgrades
         const upgrade = state.availableUpgrades.find(u => u.id === upgradeId);
-        if (!upgrade || upgrade.purchased) return state;
+        if (!upgrade) return state;
 
         // Check if we can afford the upgrade
-        if (upgrade.cost.resource) {
-          const { name, amount } = upgrade.cost.resource;
-          const resource = state.resources.find(r => r.name === name);
-          if (!resource || resource.amount < amount) return state;
+        const resourceCost = upgrade.cost.resource;
+        if (resourceCost) {
+          const resource = state.resources.find(r => r.name === resourceCost.name);
+          if (!resource || resource.amount < resourceCost.amount) return state;
         }
 
         if (upgrade.cost.levels) {
-          const requiredLevel = upgrade.requiresLevel || 0;
-          if (state.level < requiredLevel || state.level - upgrade.cost.levels < 1) {
+          if (state.level < (upgrade.requiresLevel || 0) || state.level - upgrade.cost.levels < 1) {
             return state;
           }
         }
 
-        // Create new state with updates
-        const updates: GameStateUpdates = {
+        const updates: Partial<GameState> = {
           availableUpgrades: state.availableUpgrades.map(u =>
             u.id === upgradeId ? { ...u, purchased: true } : u
-          ),
+          )
         };
 
-        // Apply resource cost
-        if (upgrade.cost.resource) {
-          const { name, amount } = upgrade.cost.resource;
+        // Apply costs
+        if (resourceCost) {
           updates.resources = state.resources.map(r =>
-            r.name === name
-              ? { ...r, amount: r.amount - amount }
+            r.name === resourceCost.name
+              ? { ...r, amount: r.amount - resourceCost.amount }
               : r
           );
         }
 
-        // Apply level cost
         if (upgrade.cost.levels) {
           updates.level = state.level - upgrade.cost.levels;
-          updates.experience = 0; // Reset experience when sacrificing levels
+          updates.experience = 0;
         }
 
-        // Apply upgrade effects
-        const currentState = state as Record<string, any>;
-        if (upgrade.effect.stat === 'globalMultiplier') {
-          updates.typingDamageMultiplier = (state.typingDamageMultiplier || 1) * upgrade.effect.value;
-          updates.productionMultiplier = (state.productionMultiplier || 1) * upgrade.effect.value;
-          updates.autoAttackDamage = (state.autoAttackDamage || 1) * upgrade.effect.value;
-        } else {
-          const currentValue = currentState[upgrade.effect.stat] || 1;
-          updates[upgrade.effect.stat] = currentValue * upgrade.effect.value;
+        // Apply effects based on type
+        if (upgrade.type === 'permanent' || upgrade.type === 'prestige') {
+          updates.permanentMultipliers = {
+            ...state.permanentMultipliers,
+            [upgrade.effect.type]: 
+              (state.permanentMultipliers[upgrade.effect.type as keyof typeof state.permanentMultipliers] || 1) * 
+              upgrade.effect.multiplier
+          };
+        } else if (upgrade.type === 'consumable' && upgrade.effect.duration) {
+          state.applyBuff(
+            upgrade.id,
+            upgrade.effect.type,
+            upgrade.effect.multiplier,
+            upgrade.effect.duration
+          );
         }
 
-        return updates as GameState;
+        return updates;
       }),
 
       upgradeFactory: (factoryId: string) => set((state) => {
@@ -597,6 +733,14 @@ export const useGameStore = create<GameState>()(
           productionMultiplier: 1,
           typingDamageMultiplier: 1,
           purchasedGuns: [],
+          activeBuffs: [],
+          permanentMultipliers: {
+            damage: 1,
+            resource: 1,
+            experience: 1,
+            money: 1,
+            all: 1
+          },
           factories: [
             {
               id: 'basic-factory',
@@ -740,120 +884,41 @@ export const useGameStore = create<GameState>()(
               }
             }
           ],
-          availableUpgrades: [
-            {
-              id: 'typing-speed-1',
-              name: 'Swift Fingers',
-              description: 'Increase typing damage by 25%',
-              cost: { resource: { name: 'Scrap', amount: 100 } },
-              type: 'typing',
-              effect: { stat: 'typingDamageMultiplier', value: 1.25 },
-              purchased: false
-            },
-            {
-              id: 'factory-1',
-              name: 'Advanced Automation',
-              description: 'Increase factory production by 50%',
-              cost: { resource: { name: 'Energy', amount: 150 } },
-              type: 'factory',
-              effect: { stat: 'productionMultiplier', value: 1.5 },
-              purchased: false
-            },
-            {
-              id: 'combat-1',
-              name: 'Auto-Turret',
-              description: 'Double auto-attack damage',
-              cost: { resource: { name: 'Scrap', amount: 200 } },
-              type: 'combat',
-              effect: { stat: 'autoAttackDamage', value: 2 },
-              purchased: false
-            },
-            {
-              id: 'prestige-typing-mastery',
-              name: 'Typing Mastery',
-              description: 'Sacrifice 5 levels to permanently increase typing damage by 100%',
-              cost: { levels: 5 },
-              type: 'prestige',
-              requiresLevel: 10,
-              effect: { 
-                stat: 'typingDamageMultiplier', 
-                value: 2,
-                permanent: true
-              },
-              purchased: false
-            },
-            {
-              id: 'prestige-resource-mastery',
-              name: 'Resource Mastery',
-              description: 'Sacrifice 8 levels to permanently increase all resource generation by 150%',
-              cost: { levels: 8 },
-              type: 'prestige',
-              requiresLevel: 15,
-              effect: { 
-                stat: 'productionMultiplier', 
-                value: 2.5,
-                permanent: true
-              },
-              purchased: false
-            },
-            {
-              id: 'prestige-combat-mastery',
-              name: 'Combat Mastery',
-              description: 'Sacrifice 10 levels to permanently increase auto-attack damage by 200%',
-              cost: { levels: 10 },
-              type: 'prestige',
-              requiresLevel: 20,
-              effect: { 
-                stat: 'autoAttackDamage', 
-                value: 3,
-                permanent: true
-              },
-              purchased: false
-            },
-            {
-              id: 'prestige-exp-boost',
-              name: 'Experience Mastery',
-              description: 'Sacrifice 12 levels to permanently gain 50% more experience from all sources',
-              cost: { levels: 12 },
-              type: 'prestige',
-              requiresLevel: 25,
-              effect: { 
-                stat: 'experienceMultiplier', 
-                value: 1.5,
-                permanent: true
-              },
-              purchased: false
-            },
-            {
-              id: 'prestige-quantum-mastery',
-              name: 'Quantum Mastery',
-              description: 'Sacrifice 15 levels to permanently increase ALL damage and production by 100%',
-              cost: { levels: 15 },
-              type: 'prestige',
-              requiresLevel: 30,
-              effect: { 
-                stat: 'globalMultiplier', 
-                value: 2,
-                permanent: true
-              },
-              purchased: false
-            }
-          ]
+          availableUpgrades: initialUpgrades
         });
       },
 
       incrementWave: () => set(state => ({ wave: state.wave + 1 })),
 
-      damageEnemy: (enemyId: string, damage: number) => set(state => {
-        const enemy = state.enemies.find(e => e.id === enemyId);
-        if (!enemy) return state;
+      damageEnemy: (enemyId: string, damage: number, splashCount: number = 3) => set(state => {
+        // Get target enemy and nearby enemies (up to splashCount total)
+        const targetIndex = state.enemies.findIndex(e => e.id === enemyId);
+        if (targetIndex === -1) return state;
 
-        const updatedEnemies = state.enemies.map(e => {
-          if (e.id === enemyId) {
-            const newHealth = Math.max(0, e.health - damage);
-            return { ...e, health: newHealth };
+        // Get indices for splash damage (enemies before and after the target)
+        const splashIndices = new Set<number>([targetIndex]);
+        let before = targetIndex - 1;
+        let after = targetIndex + 1;
+        
+        while (splashIndices.size < splashCount && (before >= 0 || after < state.enemies.length)) {
+          if (before >= 0) {
+            splashIndices.add(before);
+            before--;
           }
-          return e;
+          if (after < state.enemies.length && splashIndices.size < splashCount) {
+            splashIndices.add(after);
+            after++;
+          }
+        }
+
+        const updatedEnemies = state.enemies.map((enemy, index) => {
+          if (splashIndices.has(index)) {
+            // Main target takes full damage, others take 50% splash damage
+            const damageAmount = index === targetIndex ? damage : damage * 0.5;
+            const newHealth = Math.max(0, enemy.health - damageAmount);
+            return { ...enemy, health: newHealth };
+          }
+          return enemy;
         });
 
         const deadEnemies = updatedEnemies.filter(e => e.health <= 0);
@@ -901,6 +966,84 @@ export const useGameStore = create<GameState>()(
           baseDamage: state.baseDamage + gun.damageBonus
         };
       }),
+
+      applyBuff: (buffId: string, type: string, multiplier: number, duration: number) => 
+        set(state => {
+          const now = Date.now();
+          
+          // Remove expired buffs
+          const activeBuffs = state.activeBuffs.filter(buff => buff.endTime > now);
+          
+          // Check if a buff of this type already exists
+          const existingBuff = activeBuffs.find(buff => buff.type === type);
+          if (existingBuff) {
+            // Replace the existing buff with the new one
+            return {
+              activeBuffs: [
+                ...activeBuffs.filter(buff => buff.type !== type),
+                {
+                  id: buffId,
+                  type,
+                  multiplier,
+                  endTime: now + duration * 1000
+                }
+              ]
+            };
+          }
+
+          // Add new buff
+          return {
+            activeBuffs: [
+              ...activeBuffs,
+              {
+                id: buffId,
+                type,
+                multiplier,
+                endTime: now + duration * 1000
+              }
+            ]
+          };
+        }),
+
+      removeBuff: (buffId: string) =>
+        set(state => {
+          const now = Date.now();
+          return {
+            activeBuffs: state.activeBuffs.filter(buff => 
+              buff.id !== buffId && buff.endTime > now
+            )
+          };
+        }),
+
+      getActiveBuffMultiplier: (type: string) => {
+        const state = get();
+        const now = Date.now();
+        
+        // Clean up expired buffs
+        const expiredBuffs = state.activeBuffs.filter(buff => buff.endTime <= now);
+        if (expiredBuffs.length > 0) {
+          set(state => ({
+            activeBuffs: state.activeBuffs.filter(buff => buff.endTime > now)
+          }));
+        }
+
+        // Calculate total multiplier from active buffs
+        const buffMultiplier = state.activeBuffs
+          .filter(buff => buff.endTime > now)
+          .reduce((total, buff) => {
+            if (buff.type === type || buff.type === 'all') {
+              return total * buff.multiplier;
+            }
+            return total;
+          }, 1);
+
+        // Apply permanent multipliers
+        const permanentMultiplier = 
+          state.permanentMultipliers[type as keyof typeof state.permanentMultipliers] *
+          state.permanentMultipliers.all;
+
+        return buffMultiplier * permanentMultiplier;
+      },
     }),
     {
       name: 'game-storage'
