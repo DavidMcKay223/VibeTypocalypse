@@ -1,85 +1,72 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { ZombieScene } from './ZombieScene';
 
 export const Combat: React.FC = () => {
-  const { 
-    enemies, 
-    wave, 
-    autoAttackDamage, 
-    spawnWave, 
-    typingSpeed,
-    updateResource,
-    addExperience
-  } = useGameStore();
+  const { wave, enemies, spawnWave } = useGameStore();
+  const [countdown, setCountdown] = useState<number | null>(null);
 
-  // Auto-battle system
+  // Calculate wave stats
+  const currentWaveStats = enemies.length > 0 ? {
+    enemyCount: enemies.length,
+    maxHealth: enemies[0].maxHealth,
+    damage: enemies[0].damage,
+    reward: enemies[0].reward
+  } : null;
+
+  // Auto spawn next wave when no enemies are present
   useEffect(() => {
-    const combatInterval = setInterval(() => {
-      if (enemies.length === 0) {
+    if (enemies.length === 0) {
+      setCountdown(2);
+      const timer = setTimeout(() => {
         spawnWave();
-      } else {
-        // Auto attack based on typing speed and auto attack damage
-        const damage = autoAttackDamage * (1 + typingSpeed / 100);
-        
-        // Apply damage to first enemy
-        const enemy = enemies[0];
-        if (enemy) {
-          enemy.health -= damage;
-          
-          // If enemy is defeated
-          if (enemy.health <= 0) {
-            // Remove enemy
-            enemies.shift();
-            
-            // Grant rewards
-            const baseReward = enemy.maxHealth * 0.1;
-            updateResource('Scrap', Math.floor(baseReward));
-            updateResource('Energy', Math.floor(baseReward * 0.5));
-            addExperience(Math.floor(baseReward));
-            
-            // If wave cleared, spawn new wave
-            if (enemies.length === 0) {
-              spawnWave();
-            }
-          }
-        }
-      }
-    }, 1000);
+        setCountdown(null);
+      }, 2000);
 
-    return () => clearInterval(combatInterval);
-  }, [enemies, autoAttackDamage, spawnWave, typingSpeed, updateResource, addExperience]);
+      // Update countdown every second
+      const countdownInterval = setInterval(() => {
+        setCountdown(prev => prev !== null ? Math.max(0, prev - 1) : null);
+      }, 1000);
+
+      return () => {
+        clearTimeout(timer);
+        clearInterval(countdownInterval);
+      };
+    }
+  }, [enemies.length, spawnWave]);
 
   return (
-    <div className="p-4 bg-gray-800 rounded-lg">
-      <h2 className="text-xl font-bold text-white mb-4">Wave Defense</h2>
-      <div className="mb-4 text-gray-300">
-        <div>Current Wave: {wave}</div>
-        <div>Enemies Remaining: {enemies.length}</div>
+    <div className="bg-gray-800 p-4 rounded-lg">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">Combat Zone - Wave {wave}</h2>
+        <div className="text-sm text-gray-400">
+          {enemies.length === 0 
+            ? countdown !== null 
+              ? `Next wave in ${countdown}...` 
+              : 'Spawning wave...'
+            : `${enemies.length} enemies remaining`
+          }
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-2">
-        {enemies.slice(0, 3).map(enemy => (
-          <div key={enemy.id} className="bg-gray-700 p-2 rounded">
-            <div className="flex justify-between items-center">
-              <span className="text-white">{enemy.type}</span>
-              <span className="text-red-400">
-                {Math.floor(enemy.health)}/{enemy.maxHealth}
-              </span>
-            </div>
-            <div className="w-full bg-gray-600 h-2 rounded-full mt-1">
-              <div
-                className="bg-red-500 h-2 rounded-full transition-all duration-200"
-                style={{
-                  width: `${Math.max(0, (enemy.health / enemy.maxHealth) * 100)}%`
-                }}
-              />
-            </div>
+
+      {currentWaveStats && (
+        <div className="grid grid-cols-3 gap-4 mb-4 p-2 bg-gray-700 rounded-lg text-sm">
+          <div>
+            <span className="text-gray-400">Enemy Health: </span>
+            <span className="text-red-400">{Math.floor(currentWaveStats.maxHealth).toLocaleString()}</span>
           </div>
-        ))}
-      </div>
-      <div className="mt-4 text-gray-400">
-        <div>Auto Attack Damage: {autoAttackDamage.toFixed(1)}/s</div>
-        <div>DPS Bonus from Typing: +{Math.floor(typingSpeed)}%</div>
-      </div>
+          <div>
+            <span className="text-gray-400">Enemy Damage: </span>
+            <span className="text-orange-400">{Math.floor(currentWaveStats.damage).toLocaleString()}</span>
+          </div>
+          <div>
+            <span className="text-gray-400">Reward: </span>
+            <span className="text-yellow-400">💰 {Math.floor(currentWaveStats.reward).toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+
+      <ZombieScene />
     </div>
   );
 }; 

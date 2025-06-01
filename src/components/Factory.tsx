@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { useAchievementStore } from '../store/achievementStore';
 
 export const Factory: React.FC = () => {
   const { 
@@ -10,6 +11,7 @@ export const Factory: React.FC = () => {
     toggleFactory,
     level: playerLevel
   } = useGameStore();
+  const { updateProgress } = useAchievementStore();
 
   // Automatic resource production
   useEffect(() => {
@@ -42,6 +44,19 @@ export const Factory: React.FC = () => {
 
     return () => clearInterval(productionInterval);
   }, [factories, updateResource]);
+
+  // Track factory achievements
+  useEffect(() => {
+    // Count active factories
+    const activeFactories = factories.filter(f => f.active).length;
+    updateProgress('factories-3', activeFactories);
+
+    // Check for level 5 factory
+    const hasLevel5Factory = factories.some(f => f.level >= 5);
+    if (hasLevel5Factory) {
+      updateProgress('factory-level-5', 5);
+    }
+  }, [factories, updateProgress]);
 
   // Calculate upgrade cost for a factory
   const getUpgradeCost = (factory: any) => {
@@ -86,7 +101,7 @@ export const Factory: React.FC = () => {
                 <div className="flex items-center">
                   <span className="text-green-400 mr-2">Level {factory.level}</span>
                   <button
-                    onClick={() => factory.active && toggleFactory(factory.id)}
+                    onClick={() => toggleFactory(factory.id)}
                     className={`px-2 py-1 rounded ${
                       factory.active
                         ? 'bg-green-600 hover:bg-green-700'
