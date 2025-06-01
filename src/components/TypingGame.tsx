@@ -97,6 +97,8 @@ export const TypingGame: React.FC = () => {
   const [wordCount, setWordCount] = useState(0);
   const [backspaceCount, setBackspaceCount] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
+  const [combo, setCombo] = useState(1);
+  const [lastDamage, setLastDamage] = useState<{amount: number, isCrit: boolean, count: number} | null>(null);
   const [streak, setStreak] = useState<StreakStats>({
     currentStreak: 0,
     bestStreak: 0,
@@ -111,9 +113,31 @@ export const TypingGame: React.FC = () => {
     addExperience, 
     typingDamageMultiplier,
     enemies,
-    updateResource
+    updateResource,
+    damageEnemy,
+    activeBuffs
   } = useGameStore();
   const { updateProgress } = useAchievementStore();
+
+  // Reset combo if no input for 2 seconds
+  useEffect(() => {
+    if (combo > 1) {
+      const timer = setTimeout(() => {
+        setCombo(1);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [combo, userInput]);
+
+  // Fade out damage numbers
+  useEffect(() => {
+    if (lastDamage) {
+      const timer = setTimeout(() => {
+        setLastDamage(null);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastDamage]);
 
   const getRandomWord = useCallback((): WordState => {
     const recentWords = recentWordsRef.current;
@@ -209,14 +233,64 @@ export const TypingGame: React.FC = () => {
       setWordCount(newWordCount);
       
       if (startTime) {
-        const timeElapsed = (Date.now() - startTime) / 1000 / 60;
-        const wpm = Math.round(newWordCount / timeElapsed);
+        const timeElapsed = (Date.now() - startTime) / 1000 / 60; // Time in minutes
+        // Calculate WPM using standard word length (5 characters)
+        const charactersTyped = targetText.length;
+        const standardWordLength = 5;
+        const wpm = Math.min(200, Math.round((charactersTyped / standardWordLength) / timeElapsed)); // Cap at 200 WPM for realism
         
         const finalAccuracy = Math.max(50, accuracy - (backspaceCount * 2));
         updateTypingStats(wpm, finalAccuracy);
         
+        // Calculate damage with combo system
+        const critMultiplier = Math.random() < (finalAccuracy / 200) ? 2.5 : 1;
+        const comboMultiplier = Math.min(5, 1 + (combo * 0.2));
+        
+        // Calculate base damage with improved scaling
         const baseDamage = wpm * (finalAccuracy / 100);
-        const totalDamage = baseDamage * typingDamageMultiplier;
+        const buffMultiplier = typingDamageMultiplier;
+        
+        // New exponential scaling for higher WPM values
+        const wpmScaling = Math.pow(1.1, Math.floor(wpm / 10));
+        
+        // Calculate final damage with all multipliers
+        const totalDamage = Math.floor(
+          baseDamage * 
+          buffMultiplier * 
+          comboMultiplier * 
+          wpmScaling * 
+          critMultiplier
+        );
+
+        // Apply damage to all enemies with improved scaling
+        if (enemies.length > 0) {
+          // New damage scaling formula:
+          // - For 1-3 enemies: 100% damage each
+          // - For 4+ enemies: Scale from 100% to 75% based on count
+          const enemyCount = enemies.length;
+          let damageMultiplier = 1;
+          
+          if (enemyCount > 3) {
+            // Scale from 100% to 75% between 4 and 20 enemies
+            damageMultiplier = Math.max(0.75, 1 - ((enemyCount - 3) / 68));
+          }
+          
+          const damagePerEnemy = Math.floor(totalDamage * damageMultiplier);
+          
+          enemies.forEach(enemy => {
+            damageEnemy(enemy.id, damagePerEnemy);
+          });
+
+          // Show damage numbers for all enemies
+          setLastDamage({
+            amount: damagePerEnemy,
+            isCrit: critMultiplier > 1,
+            count: enemies.length
+          });
+        }
+        
+        // Increase combo for successful completion
+        setCombo(prev => prev + 1);
         
         // Calculate experience with streak bonus
         const baseExp = targetText.length * 5;
@@ -233,15 +307,19 @@ export const TypingGame: React.FC = () => {
         updateProgress('accuracy-95', finalAccuracy);
         updateProgress('streak-5', streak.currentStreak);
         updateProgress('streak-10', streak.currentStreak);
+        updateProgress('words-25', newWordCount);
+        updateProgress('words-50', newWordCount);
         updateProgress('words-100', newWordCount);
+        updateProgress('words-200', newWordCount);
+        updateProgress('words-350', newWordCount);
         updateProgress('words-500', newWordCount);
+        updateProgress('words-750', newWordCount);
+        updateProgress('words-1000', newWordCount);
         
-        // Check for special achievements
         if (finalAccuracy === 100 && backspaceCount === 0) {
           updateProgress('perfect-run', 1);
         }
         
-        // Check for speed demon achievement (5 words in under 5 seconds)
         if (currentWords.length >= 5 && timeElapsed * 60 < 5) {
           updateProgress('speed-demon', 1);
         }
@@ -250,21 +328,19 @@ export const TypingGame: React.FC = () => {
         updateResource('Scrap', Math.floor(totalDamage * 0.1));
         updateResource('Energy', Math.floor(totalDamage * 0.05));
 
-        // Update streak and get new words only after successful completion
         updateStreak(true, finalAccuracy);
         setCurrentWords(generateWords(streak.wordCount));
       }
 
-      // Reset for next attempt
       setUserInput('');
       setBackspaceCount(0);
       setAccuracy(100);
       setStartTime(null);
     } else {
-      // If they haven't completed the current words, just track accuracy
       const isCorrectSoFar = value === targetText.substring(0, value.length);
       if (!isCorrectSoFar) {
         setAccuracy(prev => Math.max(50, prev - 1));
+        setCombo(1); // Reset combo on mistakes
       }
     }
   };
@@ -288,8 +364,82 @@ export const TypingGame: React.FC = () => {
             <span className="text-orange-400">Best: {streak.bestStreak}</span>
             <span className="text-gray-400 mx-2">|</span>
             <span className="text-green-400">Words: {streak.wordCount}</span>
+            {combo > 1 && (
+              <>
+                <span className="text-gray-400 mx-2">|</span>
+                <span className="text-purple-400 animate-pulse">
+                  Combo: x{combo} ({(Math.min(5, 1 + (combo * 0.2))).toFixed(1)}x DMG)
+                </span>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Active Buffs Display */}
+        {activeBuffs.length > 0 && (
+          <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+            {activeBuffs.filter(buff => buff.endTime > Date.now()).map(buff => {
+              const remainingTime = Math.max(0, Math.floor((buff.endTime - Date.now()) / 1000));
+              const minutes = Math.floor(remainingTime / 60);
+              const seconds = remainingTime % 60;
+              
+              let icon = '✨';
+              let color = 'text-yellow-400';
+              switch (buff.type) {
+                case 'damage':
+                  icon = '⚔️';
+                  color = 'text-red-400';
+                  break;
+                case 'resource':
+                  icon = '📦';
+                  color = 'text-blue-400';
+                  break;
+                case 'experience':
+                  icon = '📚';
+                  color = 'text-green-400';
+                  break;
+                case 'money':
+                  icon = '💰';
+                  color = 'text-yellow-400';
+                  break;
+              }
+
+              return (
+                <div
+                  key={buff.id}
+                  className="flex items-center bg-gray-700 rounded-lg px-3 py-1 space-x-2 flex-shrink-0"
+                >
+                  <span className="text-xl">{icon}</span>
+                  <div>
+                    <div className={`text-sm font-semibold ${color}`}>
+                      x{buff.multiplier.toFixed(1)}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {minutes}:{seconds.toString().padStart(2, '0')}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {lastDamage && (
+          <div 
+            className={`fixed right-8 top-1/2 transform -translate-y-1/2 text-4xl font-bold z-50 ${
+              lastDamage.isCrit ? 'text-yellow-400 scale-110' : 'text-red-400'
+            } animate-fadeOutUp`}
+            style={{
+              textShadow: '0 0 10px rgba(0,0,0,0.5)'
+            }}
+          >
+            {lastDamage.isCrit ? 'CRITICAL! ' : ''}
+            {lastDamage.amount.toLocaleString()}
+            {lastDamage.count > 1 && (
+              <span className="text-blue-400"> x{lastDamage.count}</span>
+            )}
+          </div>
+        )}
         <div className="text-2xl font-mono mb-2">
           {targetText.split('').map((char, idx) => (
             <span
@@ -314,6 +464,10 @@ export const TypingGame: React.FC = () => {
           Streak Bonus: +{streak.currentStreak * 5}
           <br />
           Accuracy Penalty: -{Math.floor((100 - accuracy) / 2)}
+          <br />
+          Combo Multiplier: x{(Math.min(5, 1 + (combo * 0.2))).toFixed(1)}
+          <br />
+          Critical Hit Chance: {Math.floor(accuracy / 2)}%
         </div>
         <input
           type="text"

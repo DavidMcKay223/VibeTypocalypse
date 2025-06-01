@@ -8,7 +8,6 @@ import { Achievements } from './components/Achievements';
 import { useGameStore } from './store/gameStore';
 import { useAchievementStore } from './store/achievementStore';
 import { AchievementNotification } from './components/AchievementNotification';
-import { ActiveBuffs } from './components/ActiveBuffs';
 
 const App: React.FC = () => {
   const [showShop, setShowShop] = useState(false);
@@ -39,7 +38,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
-      <ActiveBuffs />
       {pendingNotification && (
         <AchievementNotification
           achievement={pendingNotification}
@@ -172,7 +170,7 @@ const App: React.FC = () => {
             <TypingGame />
           </div>
           <div>
-            <Combat />
+            <Combat autoAttackDamage={autoAttackDamage} />
           </div>
           <div className="lg:col-span-3">
             <Factory />

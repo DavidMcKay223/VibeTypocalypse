@@ -2,7 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { ZombieScene } from './ZombieScene';
 
-export const Combat: React.FC = () => {
+interface CombatProps {
+  autoAttackDamage: number;
+}
+
+export const Combat: React.FC<CombatProps> = ({ autoAttackDamage }) => {
   const { wave, enemies, spawnWave } = useGameStore();
   const [countdown, setCountdown] = useState<number | null>(null);
 

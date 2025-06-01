@@ -22,7 +22,6 @@ export interface Achievement {
 interface AchievementState {
   achievements: Achievement[];
   updateProgress: (id: string, progress: number) => void;
-  claimReward: (id: string) => boolean;
   pendingNotification: Achievement | null;
   clearNotification: () => void;
   resetAllAchievements: () => void; // New reset function
@@ -388,51 +387,37 @@ export const useAchievementStore = create<AchievementState>()(
         const state = get();
         const achievement = state.achievements.find(a => a.id === id);
         
-        if (achievement && (!achievement.completed || achievement.resetOnClaim)) {
-          const newProgress = Math.max(achievement.progress, progress);
-          const completed = newProgress >= achievement.requirement;
+        if (achievement && !achievement.claimed) {  // Only update if not already claimed
+          // Always update progress even if completed (for progress bar)
+          const newProgress = Math.max(0, Math.min(progress, achievement.requirement));
+          const wasCompleted = achievement.completed;
+          const isNowCompleted = newProgress >= achievement.requirement;
           
-          // If achievement is completed and should auto-collect
-          if (completed && achievement.autoCollect) {
+          // If achievement is newly completed, auto-collect it
+          if (!wasCompleted && isNowCompleted) {
             set({
               achievements: state.achievements.map(a =>
                 a.id === id ? {
                   ...a,
-                  progress: a.resetOnClaim ? 0 : newProgress, // Reset progress if resetOnClaim is true
-                  completed: !a.resetOnClaim, // Only stay completed if not resetting
-                  claimed: true
+                  progress: newProgress,
+                  completed: true,
+                  claimed: true  // Always mark as claimed when completed
                 } : a
               ),
-              // Set the achievement for notification
               pendingNotification: { ...achievement, progress: newProgress, completed: true }
             });
-          } else {
+          } else if (!isNowCompleted) {
+            // Only update progress if not completed
             set({
               achievements: state.achievements.map(a =>
-                a.id === id ? { ...a, progress: newProgress, completed } : a
+                a.id === id ? {
+                  ...a,
+                  progress: newProgress
+                } : a
               )
             });
           }
         }
-      },
-      
-      claimReward: (id: string) => {
-        const achievement = get().achievements.find(a => a.id === id);
-        if (achievement?.completed && !achievement.claimed) {
-          set(state => ({
-            achievements: state.achievements.map(a =>
-              a.id === id ? {
-                ...a,
-                progress: a.resetOnClaim ? 0 : a.progress, // Reset progress if resetOnClaim is true
-                completed: !a.resetOnClaim, // Only stay completed if not resetting
-                claimed: true
-              } : a
-            ),
-            pendingNotification: achievement
-          }));
-          return true;
-        }
-        return false;
       },
       
       clearNotification: () => {
@@ -448,9 +433,7 @@ export const useAchievementStore = create<AchievementState>()(
     }),
     {
       name: 'achievements-storage',
-      partialize: (state) => ({
-        achievements: state.achievements
-      })
+      version: 2  // Increment version to force reset of achievement storage
     }
   )
 ); 

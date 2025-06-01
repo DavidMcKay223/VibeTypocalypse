@@ -1,28 +1,8 @@
 import React from 'react';
 import { useAchievementStore, Achievement } from '../store/achievementStore';
-import { useGameStore } from '../store/gameStore';
 
 export const Achievements: React.FC = () => {
-  const { achievements, claimReward } = useAchievementStore();
-  const { addExperience, updateResource, typingDamageMultiplier } = useGameStore();
-
-  const handleClaimReward = (achievement: Achievement) => {
-    if (achievement.completed && claimReward(achievement.id)) {
-      switch (achievement.reward.type) {
-        case 'experience':
-          addExperience(achievement.reward.amount);
-          break;
-        case 'resource':
-          if (achievement.reward.resource) {
-            updateResource(achievement.reward.resource, achievement.reward.amount);
-          }
-          break;
-        case 'multiplier':
-          // The multiplier is automatically applied through the store
-          break;
-      }
-    }
-  };
+  const { achievements } = useAchievementStore();
 
   const getProgressColor = (achievement: Achievement) => {
     const progress = (achievement.progress / achievement.requirement) * 100;
@@ -56,41 +36,27 @@ export const Achievements: React.FC = () => {
                   {achievement.name}
                 </h3>
               </div>
-              {achievement.completed && !achievement.claimed && (
-                <button
-                  onClick={() => handleClaimReward(achievement)}
-                  className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm text-white"
-                >
-                  Claim
-                </button>
-              )}
             </div>
             
             <p className="text-gray-300 text-sm mb-2">{achievement.description}</p>
             
-            <div className="relative pt-1">
-              <div className="flex mb-2 items-center justify-between">
-                <div>
-                  <span className="text-xs font-semibold inline-block text-gray-300">
-                    {formatProgress(achievement)}
-                  </span>
-                </div>
-              </div>
-              <div className="flex h-2 mb-4 overflow-hidden bg-gray-800 rounded">
-                <div
-                  style={{
-                    width: `${Math.min(
-                      (achievement.progress / achievement.requirement) * 100,
-                      100
-                    )}%`,
-                  }}
-                  className={`${getProgressColor(achievement)} transition-all duration-300`}
-                ></div>
-              </div>
+            <div className="relative h-2 bg-gray-600 rounded-full mb-2">
+              <div
+                style={{
+                  width: `${Math.min(
+                    (achievement.progress / achievement.requirement) * 100,
+                    100
+                  )}%`,
+                  transition: 'width 0.3s ease-in-out'
+                }}
+                className={`h-full rounded-full ${getProgressColor(achievement)} transition-all duration-300`}
+              ></div>
             </div>
-
-            <div className="text-sm">
-              <span className="text-gray-400">Reward: </span>
+            
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-300">
+                {formatProgress(achievement)}
+              </span>
               <span className={`
                 ${achievement.reward.type === 'experience' ? 'text-yellow-400' : ''}
                 ${achievement.reward.type === 'resource' ? 'text-blue-400' : ''}

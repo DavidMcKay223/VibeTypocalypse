@@ -1,19 +1,21 @@
 import React from 'react';
-import { useGameStore, gunUpgrades } from '../store/gameStore';
+import { useGameStore, gunUpgrades, Gun } from '../store/gameStore';
 
 export const GunShop: React.FC = () => {
   const { money, purchasedGuns, purchaseGun } = useGameStore();
 
   return (
     <div className="bg-gray-800 p-4 rounded-lg">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold">Armory</h2>
-        <div className="text-yellow-400">💰 {money}</div>
-      </div>
+      <h2 className="text-xl font-bold text-white mb-4">
+        Gun Shop
+        <span className="text-sm font-normal text-gray-400 ml-2">
+          Available: 💰 {Math.floor(money).toLocaleString()}
+        </span>
+      </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {gunUpgrades.map(gun => {
-          const isPurchased = purchasedGuns.includes(gun.id);
+        {gunUpgrades.map((gun: Gun) => {
+          const isPurchased = purchasedGuns.some(g => g.id === gun.id);
           const canAfford = money >= gun.cost;
 
           return (
@@ -23,15 +25,16 @@ export const GunShop: React.FC = () => {
                 isPurchased ? 'border-2 border-green-500' : ''
               }`}
             >
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="text-lg font-semibold">{gun.name}</h3>
-                <div className="text-yellow-400">💰 {gun.cost}</div>
+              <h3 className="text-lg font-semibold text-white">{gun.name}</h3>
+              <p className="text-sm text-gray-300 mb-2">{gun.description}</p>
+              <div className="flex justify-between items-center">
+                <span className="text-yellow-400">💰 {gun.cost.toLocaleString()}</span>
+                <span className="text-red-400">+{gun.damage} DMG</span>
               </div>
-              <p className="text-gray-300 text-sm mb-3">{gun.description}</p>
               <button
                 onClick={() => purchaseGun(gun.id)}
                 disabled={isPurchased || !canAfford}
-                className={`w-full py-2 px-4 rounded ${
+                className={`w-full mt-2 px-4 py-2 rounded-lg font-semibold ${
                   isPurchased
                     ? 'bg-green-600 cursor-not-allowed'
                     : canAfford

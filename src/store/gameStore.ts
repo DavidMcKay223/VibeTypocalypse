@@ -2,31 +2,28 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useAchievementStore } from './achievementStore';
 
-interface Resource {
+// Export interfaces for use in components
+export interface Resource {
   name: string;
   amount: number;
   perSecond: number;
 }
 
-interface Enemy {
+export interface Enemy {
   id: string;
   health: number;
   maxHealth: number;
   damage: number;
-  type: string;
   reward: number;
 }
 
-interface Upgrade {
+export interface Upgrade {
   id: string;
   name: string;
   description: string;
-  cost: { 
-    resource?: { 
-      name: string; 
-      amount: number; 
-    } | undefined;
-    levels?: number | undefined;
+  cost: {
+    resource?: { name: string; amount: number };
+    levels?: number;
   };
   type: 'typing' | 'factory' | 'combat' | 'prestige' | 'permanent' | 'consumable';
   effect: {
@@ -38,14 +35,14 @@ interface Upgrade {
   requiresLevel?: number;
 }
 
-interface Factory {
+export interface Factory {
   id: string;
   name: string;
   description: string;
+  level: number;
   unlockLevel: number;
   unlocked: boolean;
   active: boolean;
-  level: number;
   baseCost: { resource: string; amount: number };
   effects: {
     scrapProduction?: number;
@@ -57,7 +54,7 @@ interface Factory {
   };
 }
 
-interface ShopItem {
+export interface ShopItem {
   id: string;
   name: string;
   description: string;
@@ -70,39 +67,63 @@ interface ShopItem {
   };
 }
 
-interface GameState {
-  // Player Stats
+export interface Gun {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  damage: number;
+}
+
+export interface Buff {
+  id: string;
+  type: string;
+  multiplier: number;
+  endTime: number;
+}
+
+export type MultiplierType = 'damage' | 'resource' | 'experience' | 'money' | 'all';
+
+// Define the methods interface
+interface GameStateMethods {
+  addExperience: (amount: number) => void;
+  updateResource: (resourceName: string, amount: number) => void;
+  updateTypingStats: (wpm: number, accuracy: number) => void;
+  spawnWave: () => void;
+  damageEnemy: (enemyId: string, damage: number, splashCount?: number) => void;
+  incrementWave: () => void;
+  resetGame: () => void;
+  calculateAutoAttackDamage: () => number;
+  getActiveBuffMultiplier: (type: string) => number;
+  addBuff: (buff: Buff) => void;
+  removeBuff: (buffId: string) => void;
+  addPermanentMultiplier: (type: MultiplierType, amount: number) => void;
+  applyBuff: (buffId: string, type: string, multiplier: number, duration: number) => void;
+  purchaseGun: (gunId: string) => void;
+  purchaseUpgrade: (upgradeId: string) => void;
+  upgradeFactory: (factoryId: string) => void;
+  toggleFactory: (factoryId: string) => void;
+  unlockFactory: (factoryId: string) => void;
+}
+
+// Define the base state without methods
+interface GameStateBase {
   level: number;
   experience: number;
   typingSpeed: number;
   accuracy: number;
   money: number;
-  
-  // Resources
   resources: Resource[];
-  
-  // Combat
   wave: number;
   enemies: Enemy[];
   autoAttackDamage: number;
   baseDamage: number;
-  
-  // Factory
-  factories: Factory[];
   productionMultiplier: number;
-  
-  // Shop
-  availableUpgrades: Upgrade[];
   typingDamageMultiplier: number;
-  purchasedGuns: string[];
-  
-  // Buffs
-  activeBuffs: {
-    id: string;
-    type: string;
-    multiplier: number;
-    endTime: number;
-  }[];
+  purchasedGuns: Gun[];
+  activeBuffs: Buff[];
+  factories: Factory[];
+  availableUpgrades: Upgrade[];
   permanentMultipliers: {
     damage: number;
     resource: number;
@@ -110,28 +131,13 @@ interface GameState {
     money: number;
     all: number;
   };
-  
-  // Methods
-  addExperience: (amount: number) => void;
-  updateResource: (resourceName: string, amount: number) => void;
-  spawnWave: () => void;
-  incrementWave: () => void;
-  damageEnemy: (enemyId: string, damage: number, splashCount?: number) => void;
-  updateTypingStats: (wpm: number, accuracy: number) => void;
-  purchaseUpgrade: (upgradeId: string) => void;
-  upgradeFactory: (factoryId: string) => void;
-  toggleFactory: (factoryId: string) => void;
-  resetGame: () => void;
-  calculateAutoAttackDamage: () => number;
-  purchaseGun: (gunId: string) => void;
-  applyBuff: (buffId: string, type: string, multiplier: number, duration: number) => void;
-  removeBuff: (buffId: string) => void;
-  getActiveBuffMultiplier: (type: string) => number;
 }
 
-interface GameStateUpdates extends Partial<GameState> {
-  [key: string]: any;
-}
+// Combine base state and methods
+type GameState = GameStateBase & GameStateMethods;
+
+// Type for state updates (only allows updating base state properties)
+type GameStateUpdates = Partial<GameStateBase>;
 
 // Update all upgrade effects in initial state
 const initialUpgrades: Upgrade[] = [
@@ -178,8 +184,8 @@ const initialUpgrades: Upgrade[] = [
     description: 'Sacrifice 8 levels to permanently increase all resource generation by 150%',
     cost: { levels: 8 },
     type: 'prestige',
-    requiresLevel: 15,
-    effect: { type: 'resource', multiplier: 2.5 },
+    requiresLevel: 10,
+    effect: { type: 'resource', multiplier: 1.5 },
     purchased: false
   },
   {
@@ -188,7 +194,7 @@ const initialUpgrades: Upgrade[] = [
     description: 'Sacrifice 10 levels to permanently increase auto-attack damage by 200%',
     cost: { levels: 10 },
     type: 'prestige',
-    requiresLevel: 20,
+    requiresLevel: 10,
     effect: { type: 'damage', multiplier: 3 },
     purchased: false
   },
@@ -198,8 +204,8 @@ const initialUpgrades: Upgrade[] = [
     description: 'Sacrifice 12 levels to permanently gain 50% more experience from all sources',
     cost: { levels: 12 },
     type: 'prestige',
-    requiresLevel: 25,
-    effect: { type: 'experience', multiplier: 1.5 },
+    requiresLevel: 10,
+    effect: { type: 'experience', multiplier: 0.5 },
     purchased: false
   },
   {
@@ -208,8 +214,8 @@ const initialUpgrades: Upgrade[] = [
     description: 'Sacrifice 15 levels to permanently increase ALL damage and production by 100%',
     cost: { levels: 15 },
     type: 'prestige',
-    requiresLevel: 30,
-    effect: { type: 'all', multiplier: 2 },
+    requiresLevel: 10,
+    effect: { type: 'all', multiplier: 1 },
     purchased: false
   }
 ];
@@ -293,6 +299,44 @@ export const shopItems: ShopItem[] = [
   }
 ];
 
+export const gunUpgrades: Gun[] = [
+  {
+    id: 'pistol',
+    name: 'Pistol',
+    description: 'Basic sidearm with reliable damage',
+    cost: 500,
+    damage: 10
+  },
+  {
+    id: 'shotgun',
+    name: 'Shotgun',
+    description: 'High damage at close range',
+    cost: 2500,
+    damage: 35
+  },
+  {
+    id: 'rifle',
+    name: 'Assault Rifle',
+    description: 'Balanced weapon with good damage output',
+    cost: 7500,
+    damage: 75
+  },
+  {
+    id: 'sniper',
+    name: 'Sniper Rifle',
+    description: 'High precision weapon with massive damage',
+    cost: 25000,
+    damage: 200
+  },
+  {
+    id: 'plasma',
+    name: 'Plasma Cannon',
+    description: 'Advanced energy weapon with devastating power',
+    cost: 100000,
+    damage: 500
+  }
+];
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -314,6 +358,189 @@ export const useGameStore = create<GameState>()(
       typingDamageMultiplier: 1,
       purchasedGuns: [],
       activeBuffs: [],
+      factories: [
+        {
+          id: 'scrap-collector',
+          name: 'Scrap Collector',
+          description: 'Basic scrap collection from the environment',
+          level: 1,
+          unlockLevel: 1,
+          unlocked: true,
+          active: true,
+          baseCost: { resource: 'Scrap', amount: 50 },
+          effects: {
+            scrapProduction: 1,
+            autoAttackBonus: 0
+          }
+        },
+        {
+          id: 'energy-generator',
+          name: 'Energy Generator',
+          description: 'Converts scrap into energy',
+          level: 1,
+          unlockLevel: 2,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Scrap', amount: 100 },
+          effects: {
+            energyProduction: 0.5,
+            autoAttackBonus: 0
+          }
+        },
+        {
+          id: 'advanced-collector',
+          name: 'Advanced Collector',
+          description: 'Enhanced scrap collection with energy assistance',
+          level: 0,
+          unlockLevel: 3,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 150 },
+          effects: {
+            scrapProduction: 2.5,
+            energyProduction: -0.1,
+            autoAttackBonus: 0.02
+          }
+        },
+        {
+          id: 'quantum-processor',
+          name: 'Quantum Processor',
+          description: 'Boosts typing damage using quantum calculations',
+          level: 0,
+          unlockLevel: 4,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 200 },
+          effects: {
+            typingDamageBonus: 0.1,
+            energyProduction: 1,
+            autoAttackBonus: 0.05
+          }
+        },
+        {
+          id: 'matter-synthesizer',
+          name: 'Matter Synthesizer',
+          description: 'Creates scrap from energy using matter synthesis',
+          level: 0,
+          unlockLevel: 5,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 300 },
+          effects: {
+            scrapProduction: 5,
+            energyProduction: -0.5,
+            autoAttackBonus: 0.03
+          }
+        },
+        {
+          id: 'energy-amplifier',
+          name: 'Energy Amplifier',
+          description: 'Amplifies energy production through resonance',
+          level: 0,
+          unlockLevel: 6,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Scrap', amount: 400 },
+          effects: {
+            energyProduction: 3,
+            typingDamageBonus: 0.05
+          }
+        },
+        {
+          id: 'combat-forge',
+          name: 'Combat Forge',
+          description: 'Enhances weapons using scrap and energy',
+          level: 0,
+          unlockLevel: 7,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 500 },
+          effects: {
+            autoAttackBonus: 0.15,
+            scrapProduction: -0.5,
+            energyProduction: -0.5
+          }
+        },
+        {
+          id: 'typing-enhancer',
+          name: 'Typing Enhancer',
+          description: 'Dramatically increases typing damage',
+          level: 0,
+          unlockLevel: 8,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 600 },
+          effects: {
+            typingDamageBonus: 0.25,
+            energyProduction: -0.2
+          }
+        },
+        {
+          id: 'resource-synthesizer',
+          name: 'Resource Synthesizer',
+          description: 'Generates both scrap and energy efficiently',
+          level: 0,
+          unlockLevel: 9,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Scrap', amount: 800 },
+          effects: {
+            scrapProduction: 4,
+            energyProduction: 2,
+            resourceBonus: 0.05
+          }
+        },
+        {
+          id: 'quantum-amplifier',
+          name: 'Quantum Amplifier',
+          description: 'Uses quantum mechanics to boost all production',
+          level: 0,
+          unlockLevel: 10,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 1000 },
+          effects: {
+            scrapProduction: 3,
+            energyProduction: 3,
+            typingDamageBonus: 0.1,
+            autoAttackBonus: 0.1,
+            resourceBonus: 0.1
+          }
+        },
+        {
+          id: 'experience-matrix',
+          name: 'Experience Matrix',
+          description: 'Enhances experience gain through quantum computing',
+          level: 0,
+          unlockLevel: 12,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 1500 },
+          effects: {
+            experienceBonus: 0.2,
+            energyProduction: -1
+          }
+        },
+        {
+          id: 'ultimate-factory',
+          name: 'Ultimate Factory',
+          description: 'The pinnacle of factory technology',
+          level: 0,
+          unlockLevel: 15,
+          unlocked: false,
+          active: false,
+          baseCost: { resource: 'Energy', amount: 2000 },
+          effects: {
+            scrapProduction: 10,
+            energyProduction: 5,
+            typingDamageBonus: 0.2,
+            autoAttackBonus: 0.2,
+            experienceBonus: 0.1,
+            resourceBonus: 0.15
+          }
+        }
+      ],
+      availableUpgrades: initialUpgrades,
       permanentMultipliers: {
         damage: 1,
         resource: 1,
@@ -321,180 +548,29 @@ export const useGameStore = create<GameState>()(
         money: 1,
         all: 1
       },
-
-      // Factories
-      factories: [
-        {
-          id: 'basic-factory',
-          name: 'Basic Factory',
-          description: 'Standard resource production',
-          unlockLevel: 1,
-          unlocked: true,
-          active: true,
-          level: 1,
-          baseCost: { resource: 'Scrap', amount: 100 },
-          effects: {
-            scrapProduction: 1,
-            energyProduction: 0.5
-          }
-        },
-        {
-          id: 'quantum-processor',
-          name: 'Quantum Processor',
-          description: 'Boosts typing damage by 10% per level',
-          unlockLevel: 3,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Energy', amount: 200 },
-          effects: {
-            typingDamageBonus: 0.1,
-            energyProduction: 1
-          }
-        },
-        {
-          id: 'auto-turret',
-          name: 'Auto-Turret Factory',
-          description: 'Increases auto-attack damage by 15% per level',
-          unlockLevel: 5,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Scrap', amount: 300 },
-          effects: {
-            autoAttackBonus: 0.15,
-            scrapProduction: 0.5
-          }
-        },
-        {
-          id: 'exp-synthesizer',
-          name: 'Experience Synthesizer',
-          description: 'Generates bonus experience from typing',
-          unlockLevel: 7,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Energy', amount: 400 },
-          effects: {
-            experienceBonus: 0.2,
-            energyProduction: 0.3
-          }
-        },
-        {
-          id: 'resource-amplifier',
-          name: 'Resource Amplifier',
-          description: 'Increases all resource production by 20% per level',
-          unlockLevel: 10,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Scrap', amount: 500 },
-          effects: {
-            resourceBonus: 0.2
-          }
-        },
-        {
-          id: 'neural-network',
-          name: 'Neural Network Factory',
-          description: 'Boosts both typing and auto-attack damage',
-          unlockLevel: 12,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Energy', amount: 600 },
-          effects: {
-            typingDamageBonus: 0.08,
-            autoAttackBonus: 0.08
-          }
-        },
-        {
-          id: 'matter-converter',
-          name: 'Matter Converter',
-          description: 'High scrap production with energy cost',
-          unlockLevel: 15,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Energy', amount: 700 },
-          effects: {
-            scrapProduction: 3,
-            energyProduction: -0.5
-          }
-        },
-        {
-          id: 'energy-reactor',
-          name: 'Energy Reactor',
-          description: 'High energy production with scrap cost',
-          unlockLevel: 15,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Scrap', amount: 700 },
-          effects: {
-            energyProduction: 3,
-            scrapProduction: -0.5
-          }
-        },
-        {
-          id: 'quantum-entangler',
-          name: 'Quantum Entangler',
-          description: 'Synergizes all other factories, boosting their effects',
-          unlockLevel: 20,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Energy', amount: 1000 },
-          effects: {
-            resourceBonus: 0.1,
-            typingDamageBonus: 0.05,
-            autoAttackBonus: 0.05,
-            experienceBonus: 0.1
-          }
-        },
-        {
-          id: 'temporal-accelerator',
-          name: 'Temporal Accelerator',
-          description: 'Increases resource generation speed over time',
-          unlockLevel: 25,
-          unlocked: false,
-          active: false,
-          level: 0,
-          baseCost: { resource: 'Scrap', amount: 1500 },
-          effects: {
-            resourceBonus: 0.25,
-            energyProduction: -1
-          }
-        }
-      ],
-      
-      // Shop
-      availableUpgrades: initialUpgrades,
       
       // Methods
-      addExperience: (amount: number) => set((state) => {
-        const newExperience = state.experience + amount;
+      addExperience: (amount: number) => {
+        const state = get();
+        const buffMultiplier = state.getActiveBuffMultiplier('experience');
+        const totalExp = Math.floor(amount * buffMultiplier);
         
-        // New level calculation: Each level requires 100 * level experience
-        const currentLevelExp = 100 * state.level;
-        const newLevel = newExperience >= currentLevelExp ? state.level + 1 : state.level;
-        
-        // Check for factory unlocks
-        const updatedFactories = state.factories.map(factory => ({
-          ...factory,
-          unlocked: factory.unlockLevel <= newLevel
-        }));
-
-        return {
-          experience: newLevel > state.level ? 0 : newExperience, // Reset exp on level up
-          level: newLevel,
-          factories: updatedFactories
+        const updates: GameStateUpdates = {
+          experience: state.experience + totalExp
         };
-      }),
+
+        // Check for level up
+        const expForNextLevel = Math.floor(100 * Math.pow(1.1, state.level - 1));
+        if (updates.experience && updates.experience >= expForNextLevel) {
+          updates.level = state.level + 1;
+          updates.experience = 0;
+        }
+
+        set(updates);
+      },
 
       updateResource: (resourceName: string, amount: number) => set((state) => {
         const buffMultiplier = state.getActiveBuffMultiplier('resource');
-        
-        // Calculate total resource bonus from factories
         const resourceBonus = state.factories.reduce((bonus, factory) => {
           if (factory.active && factory.effects.resourceBonus) {
             return bonus * (1 + factory.effects.resourceBonus * factory.level);
@@ -524,44 +600,56 @@ export const useGameStore = create<GameState>()(
           resourceRates[key as keyof typeof resourceRates] *= resourceBonus;
         });
 
-        return {
-          resources: state.resources.map(resource =>
-            resource.name === resourceName
-              ? { 
-                  ...resource, 
-                  amount: resource.amount + (amount * resourceBonus * buffMultiplier)
-                }
-              : {
-                  ...resource,
-                  perSecond: resourceRates[resource.name as keyof typeof resourceRates]
-                }
-          )
-        };
+        // Update achievements for resource accumulation and production
+        const { updateProgress } = useAchievementStore.getState();
+        const updatedResources = state.resources.map(resource => {
+          const newAmount = resource.name === resourceName
+            ? resource.amount + (amount * resourceBonus * buffMultiplier)
+            : resource.amount;
+          
+          // Track resource accumulation achievements
+          if (resource.name === 'Scrap') {
+            updateProgress('scrap-hoarder', newAmount);
+          } else if (resource.name === 'Energy') {
+            updateProgress('energy-master', newAmount);
+          }
+
+          // Track resource production rate achievement
+          const newPerSecond = resourceRates[resource.name as keyof typeof resourceRates];
+          const totalProduction = Object.values(resourceRates).reduce((sum, rate) => sum + rate, 0);
+          updateProgress('resource-production', totalProduction);
+
+          return {
+            ...resource,
+            amount: newAmount,
+            perSecond: newPerSecond
+          };
+        });
+
+        return { resources: updatedResources };
       }),
 
       // Helper to calculate total auto attack damage including bonuses
       calculateAutoAttackDamage: () => {
         const state = get();
-        const baseAutoAttackDamage = state.baseDamage;
+        const baseAutoAttack = state.baseDamage || 0;
+        const buffMultiplier = state.getActiveBuffMultiplier('damage') || 1;
+        const permanentMultiplier = (state.permanentMultipliers.damage || 1) * (state.permanentMultipliers.all || 1);
         
-        // Calculate bonus from factories (multiplicative)
-        const autoAttackBonus = state.factories.reduce((bonus, factory) => {
+        // Calculate gun bonus
+        const gunBonus = state.purchasedGuns.reduce((total, gun) => total + (gun.damage || 0), 0);
+        
+        // Calculate factory bonus
+        const factoryBonus = state.factories.reduce((bonus, factory) => {
           if (factory.active && factory.effects.autoAttackBonus) {
-            return bonus * (1 + factory.effects.autoAttackBonus * factory.level);
+            return bonus * (1 + (factory.effects.autoAttackBonus * factory.level));
           }
           return bonus;
         }, 1);
 
-        // Apply gun bonuses (multiplicative)
-        const gunBonus = state.purchasedGuns.reduce((bonus, gunId) => {
-          const gun = gunUpgrades.find(g => g.id === gunId);
-          return bonus * (1 + (gun?.damageBonus || 0) / 100);
-        }, 1);
-
-        // Apply active buffs and permanent multipliers
-        const buffMultiplier = state.getActiveBuffMultiplier('damage');
-
-        return Math.floor(baseAutoAttackDamage * autoAttackBonus * gunBonus * buffMultiplier);
+        // Ensure we return a valid number
+        const totalDamage = (baseAutoAttack * buffMultiplier * permanentMultiplier * factoryBonus) + gunBonus;
+        return isNaN(totalDamage) ? 0 : Math.floor(totalDamage);
       },
 
       spawnWave: () => set(state => {
@@ -597,6 +685,10 @@ export const useGameStore = create<GameState>()(
           const updates: Partial<GameState> = {
             money: state.money - shopItem.cost
           };
+
+          // Track money spent achievement
+          const { updateProgress } = useAchievementStore.getState();
+          updateProgress('money-spender', shopItem.cost);
 
           if (shopItem.type === 'permanent') {
             updates.permanentMultipliers = {
@@ -674,7 +766,7 @@ export const useGameStore = create<GameState>()(
         return updates;
       }),
 
-      upgradeFactory: (factoryId: string) => set((state) => {
+      upgradeFactory: (factoryId: string) => set(state => {
         const factory = state.factories.find(f => f.id === factoryId);
         if (!factory || !factory.unlocked) return state;
 
@@ -683,14 +775,12 @@ export const useGameStore = create<GameState>()(
         
         if (!resource || resource.amount < cost) return state;
 
-        // Update resource
         const updatedResources = state.resources.map(r =>
           r.name === factory.baseCost.resource
             ? { ...r, amount: r.amount - cost }
             : r
         );
 
-        // Update factory level
         const updatedFactories = state.factories.map(f =>
           f.id === factoryId
             ? { ...f, level: f.level + 1 }
@@ -703,7 +793,7 @@ export const useGameStore = create<GameState>()(
         };
       }),
 
-      toggleFactory: (factoryId: string) => set((state) => ({
+      toggleFactory: (factoryId: string) => set(state => ({
         factories: state.factories.map(f =>
           f.id === factoryId && f.unlocked
             ? { ...f, active: !f.active }
@@ -741,149 +831,12 @@ export const useGameStore = create<GameState>()(
             money: 1,
             all: 1
           },
-          factories: [
-            {
-              id: 'basic-factory',
-              name: 'Basic Factory',
-              description: 'Standard resource production',
-              unlockLevel: 1,
-              unlocked: true,
-              active: true,
-              level: 1,
-              baseCost: { resource: 'Scrap', amount: 100 },
-              effects: {
-                scrapProduction: 1,
-                energyProduction: 0.5
-              }
-            },
-            {
-              id: 'quantum-processor',
-              name: 'Quantum Processor',
-              description: 'Boosts typing damage by 10% per level',
-              unlockLevel: 3,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Energy', amount: 200 },
-              effects: {
-                typingDamageBonus: 0.1,
-                energyProduction: 1
-              }
-            },
-            {
-              id: 'auto-turret',
-              name: 'Auto-Turret Factory',
-              description: 'Increases auto-attack damage by 15% per level',
-              unlockLevel: 5,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Scrap', amount: 300 },
-              effects: {
-                autoAttackBonus: 0.15,
-                scrapProduction: 0.5
-              }
-            },
-            {
-              id: 'exp-synthesizer',
-              name: 'Experience Synthesizer',
-              description: 'Generates bonus experience from typing',
-              unlockLevel: 7,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Energy', amount: 400 },
-              effects: {
-                experienceBonus: 0.2,
-                energyProduction: 0.3
-              }
-            },
-            {
-              id: 'resource-amplifier',
-              name: 'Resource Amplifier',
-              description: 'Increases all resource production by 20% per level',
-              unlockLevel: 10,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Scrap', amount: 500 },
-              effects: {
-                resourceBonus: 0.2
-              }
-            },
-            {
-              id: 'neural-network',
-              name: 'Neural Network Factory',
-              description: 'Boosts both typing and auto-attack damage',
-              unlockLevel: 12,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Energy', amount: 600 },
-              effects: {
-                typingDamageBonus: 0.08,
-                autoAttackBonus: 0.08
-              }
-            },
-            {
-              id: 'matter-converter',
-              name: 'Matter Converter',
-              description: 'High scrap production with energy cost',
-              unlockLevel: 15,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Energy', amount: 700 },
-              effects: {
-                scrapProduction: 3,
-                energyProduction: -0.5
-              }
-            },
-            {
-              id: 'energy-reactor',
-              name: 'Energy Reactor',
-              description: 'High energy production with scrap cost',
-              unlockLevel: 15,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Scrap', amount: 700 },
-              effects: {
-                energyProduction: 3,
-                scrapProduction: -0.5
-              }
-            },
-            {
-              id: 'quantum-entangler',
-              name: 'Quantum Entangler',
-              description: 'Synergizes all other factories, boosting their effects',
-              unlockLevel: 20,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Energy', amount: 1000 },
-              effects: {
-                resourceBonus: 0.1,
-                typingDamageBonus: 0.05,
-                autoAttackBonus: 0.05,
-                experienceBonus: 0.1
-              }
-            },
-            {
-              id: 'temporal-accelerator',
-              name: 'Temporal Accelerator',
-              description: 'Increases resource generation speed over time',
-              unlockLevel: 25,
-              unlocked: false,
-              active: false,
-              level: 0,
-              baseCost: { resource: 'Scrap', amount: 1500 },
-              effects: {
-                resourceBonus: 0.25,
-                energyProduction: -1
-              }
-            }
-          ],
+          factories: get().factories.map(factory => ({
+            ...factory,
+            level: factory.id === 'scrap-collector' ? 1 : 0,
+            unlocked: factory.id === 'scrap-collector',
+            active: factory.id === 'scrap-collector'
+          })),
           availableUpgrades: initialUpgrades
         });
       },
@@ -891,6 +844,34 @@ export const useGameStore = create<GameState>()(
       incrementWave: () => set(state => ({ wave: state.wave + 1 })),
 
       damageEnemy: (enemyId: string, damage: number, splashCount: number = 3) => set(state => {
+        // Calculate total damage including all multipliers
+        const buffMultiplier = state.getActiveBuffMultiplier('damage') || 1;
+        const permanentMultiplier = (state.permanentMultipliers.damage || 1) * (state.permanentMultipliers.all || 1);
+        
+        // Calculate factory bonus
+        const factoryBonus = state.factories.reduce((bonus, factory) => {
+          if (factory.active) {
+            if (factory.effects.typingDamageBonus) {
+              bonus.typing *= (1 + (factory.effects.typingDamageBonus * factory.level));
+            }
+            if (factory.effects.autoAttackBonus) {
+              bonus.autoAttack *= (1 + (factory.effects.autoAttackBonus * factory.level));
+            }
+          }
+          return bonus;
+        }, { typing: 1, autoAttack: 1 });
+
+        // Calculate auto attack damage (no reduction for base damage)
+        const baseAutoAttack = state.baseDamage || 0;
+        const gunBonus = state.purchasedGuns.reduce((total, gun) => total + (gun.damage || 0), 0);
+        const totalAutoAttackDamage = (baseAutoAttack * buffMultiplier * permanentMultiplier * factoryBonus.autoAttack) + gunBonus;
+
+        // If damage is provided (from typing or clicking), add it to the total
+        // Click damage gets full gun bonus and general multipliers
+        const totalDamage = damage > 0 
+          ? totalAutoAttackDamage + (damage * buffMultiplier * permanentMultiplier)
+          : totalAutoAttackDamage;
+
         // Get target enemy and nearby enemies (up to splashCount total)
         const targetIndex = state.enemies.findIndex(e => e.id === enemyId);
         if (targetIndex === -1) return state;
@@ -900,6 +881,13 @@ export const useGameStore = create<GameState>()(
         let before = targetIndex - 1;
         let after = targetIndex + 1;
         
+        // Build chain reaction multipliers (reduced multipliers)
+        const chainMultipliers: number[] = [];
+        for (let i = 0; i < splashCount; i++) {
+          // Each subsequent hit in the chain does 20% more damage than the last
+          chainMultipliers.push(1 + (i * 0.2));
+        }
+
         while (splashIndices.size < splashCount && (before >= 0 || after < state.enemies.length)) {
           if (before >= 0) {
             splashIndices.add(before);
@@ -911,10 +899,15 @@ export const useGameStore = create<GameState>()(
           }
         }
 
+        // Convert to array and sort for consistent chain order
+        const orderedIndices = Array.from(splashIndices).sort();
+
         const updatedEnemies = state.enemies.map((enemy, index) => {
-          if (splashIndices.has(index)) {
-            // Main target takes full damage, others take 50% splash damage
-            const damageAmount = index === targetIndex ? damage : damage * 0.5;
+          const chainIndex = orderedIndices.indexOf(index);
+          if (chainIndex !== -1) {
+            // Apply chain reaction multiplier
+            const chainMultiplier = chainMultipliers[chainIndex];
+            const damageAmount = Math.floor(totalDamage * chainMultiplier);
             const newHealth = Math.max(0, enemy.health - damageAmount);
             return { ...enemy, health: newHealth };
           }
@@ -929,13 +922,18 @@ export const useGameStore = create<GameState>()(
         const expReward = deadEnemies.length * (state.wave * 15);
         const resourceReward = deadEnemies.length * (state.wave * 8);
 
+        // Track money accumulation achievement when receiving rewards
+        const { updateProgress } = useAchievementStore.getState();
+        const newMoney = state.money + moneyReward;
+        updateProgress('money-millionaire', newMoney);
+
         // If all enemies are cleared, increment wave
         if (remainingEnemies.length === 0) {
           return {
             enemies: remainingEnemies,
             wave: state.wave + 1,
             experience: state.experience + expReward,
-            money: state.money + moneyReward,
+            money: newMoney,
             resources: state.resources.map(resource => ({
               ...resource,
               amount: resource.amount + resourceReward
@@ -945,7 +943,7 @@ export const useGameStore = create<GameState>()(
 
         return { 
           enemies: remainingEnemies,
-          money: state.money + moneyReward,
+          money: newMoney,
           experience: state.experience + expReward,
           resources: state.resources.map(resource => ({
             ...resource,
@@ -954,56 +952,41 @@ export const useGameStore = create<GameState>()(
         };
       }),
 
-      purchaseGun: (gunId: string) => set(state => {
+      purchaseGun: (gunId: string) => {
         const gun = gunUpgrades.find(g => g.id === gunId);
-        if (!gun || state.purchasedGuns.includes(gunId) || state.money < gun.cost) {
-          return state;
-        }
+        if (!gun) return;
 
-        return {
-          money: state.money - gun.cost,
-          purchasedGuns: [...state.purchasedGuns, gunId],
-          baseDamage: state.baseDamage + gun.damageBonus
-        };
-      }),
-
-      applyBuff: (buffId: string, type: string, multiplier: number, duration: number) => 
         set(state => {
-          const now = Date.now();
-          
-          // Remove expired buffs
-          const activeBuffs = state.activeBuffs.filter(buff => buff.endTime > now);
-          
-          // Check if a buff of this type already exists
-          const existingBuff = activeBuffs.find(buff => buff.type === type);
-          if (existingBuff) {
-            // Replace the existing buff with the new one
+          if (state.money >= gun.cost && !state.purchasedGuns.some(g => g.id === gun.id)) {
+            // Track money spent and arsenal achievements
+            const { updateProgress } = useAchievementStore.getState();
+            updateProgress('money-spender', gun.cost);
+            
+            const newPurchasedGuns = [...state.purchasedGuns, gun];
+            // Update arsenal achievement with current gun count
+            updateProgress('arsenal-collector', newPurchasedGuns.length);
+
             return {
-              activeBuffs: [
-                ...activeBuffs.filter(buff => buff.type !== type),
-                {
-                  id: buffId,
-                  type,
-                  multiplier,
-                  endTime: now + duration * 1000
-                }
-              ]
+              money: state.money - gun.cost,
+              purchasedGuns: newPurchasedGuns,
+              baseDamage: state.baseDamage + gun.damage
             };
           }
+          return state;
+        });
+      },
 
-          // Add new buff
-          return {
-            activeBuffs: [
-              ...activeBuffs,
-              {
-                id: buffId,
-                type,
-                multiplier,
-                endTime: now + duration * 1000
-              }
-            ]
-          };
-        }),
+      applyBuff: (buffId: string, type: string, multiplier: number, duration: number) => {
+        const buff: Buff = {
+          id: buffId,
+          type,
+          multiplier,
+          endTime: Date.now() + duration
+        };
+        set(state => ({
+          activeBuffs: [...state.activeBuffs, buff]
+        }));
+      },
 
       removeBuff: (buffId: string) =>
         set(state => {
@@ -1044,48 +1027,245 @@ export const useGameStore = create<GameState>()(
 
         return buffMultiplier * permanentMultiplier;
       },
+
+      addBuff: (buff: Buff) => set(state => ({
+        activeBuffs: [...state.activeBuffs, buff]
+      })),
+
+      addPermanentMultiplier: (type: MultiplierType, amount: number) => set(state => ({
+        permanentMultipliers: {
+          ...state.permanentMultipliers,
+          [type]: state.permanentMultipliers[type] * amount
+        }
+      })),
+
+      unlockFactory: (factoryId: string) => set(state => {
+        const factory = state.factories.find(f => f.id === factoryId);
+        if (!factory || factory.unlocked) return state;
+
+        const resource = state.resources.find(r => r.name === factory.baseCost.resource);
+        if (!resource || resource.amount < factory.baseCost.amount) return state;
+
+        // Deduct the cost
+        const updatedResources = state.resources.map(r =>
+          r.name === factory.baseCost.resource
+            ? { ...r, amount: r.amount - factory.baseCost.amount }
+            : r
+        );
+
+        // Update the factory
+        const updatedFactories = state.factories.map(f =>
+          f.id === factoryId
+            ? { ...f, unlocked: true, level: 1, active: true }
+            : f
+        );
+
+        return {
+          resources: updatedResources,
+          factories: updatedFactories
+        };
+      }),
     }),
     {
-      name: 'game-storage'
+      name: 'game-storage',
+      version: 3, // Increment version to force state migration
+      migrate: (persistedState: any, version: number) => {
+        if (version < 3) {
+          // Reset to initial state with correct factories
+          const state = persistedState as GameState;
+          return {
+            ...state,
+            factories: [
+              {
+                id: 'scrap-collector',
+                name: 'Scrap Collector',
+                description: 'Basic scrap collection from the environment',
+                level: 1,
+                unlockLevel: 1,
+                unlocked: true,
+                active: true,
+                baseCost: { resource: 'Scrap', amount: 50 },
+                effects: {
+                  scrapProduction: 1,
+                  autoAttackBonus: 0
+                }
+              },
+              {
+                id: 'energy-generator',
+                name: 'Energy Generator',
+                description: 'Converts scrap into energy',
+                level: 0,
+                unlockLevel: 2,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Scrap', amount: 100 },
+                effects: {
+                  energyProduction: 0.5,
+                  autoAttackBonus: 0
+                }
+              },
+              {
+                id: 'advanced-collector',
+                name: 'Advanced Collector',
+                description: 'Enhanced scrap collection with energy assistance',
+                level: 0,
+                unlockLevel: 3,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 150 },
+                effects: {
+                  scrapProduction: 2.5,
+                  energyProduction: -0.1,
+                  autoAttackBonus: 0.02
+                }
+              },
+              {
+                id: 'quantum-processor',
+                name: 'Quantum Processor',
+                description: 'Boosts typing damage using quantum calculations',
+                level: 0,
+                unlockLevel: 4,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 200 },
+                effects: {
+                  typingDamageBonus: 0.1,
+                  energyProduction: 1,
+                  autoAttackBonus: 0.05
+                }
+              },
+              {
+                id: 'matter-synthesizer',
+                name: 'Matter Synthesizer',
+                description: 'Creates scrap from energy using matter synthesis',
+                level: 0,
+                unlockLevel: 5,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 300 },
+                effects: {
+                  scrapProduction: 5,
+                  energyProduction: -0.5,
+                  autoAttackBonus: 0.03
+                }
+              },
+              {
+                id: 'energy-amplifier',
+                name: 'Energy Amplifier',
+                description: 'Amplifies energy production through resonance',
+                level: 0,
+                unlockLevel: 6,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Scrap', amount: 400 },
+                effects: {
+                  energyProduction: 3,
+                  typingDamageBonus: 0.05
+                }
+              },
+              {
+                id: 'combat-forge',
+                name: 'Combat Forge',
+                description: 'Enhances weapons using scrap and energy',
+                level: 0,
+                unlockLevel: 7,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 500 },
+                effects: {
+                  autoAttackBonus: 0.15,
+                  scrapProduction: -0.5,
+                  energyProduction: -0.5
+                }
+              },
+              {
+                id: 'typing-enhancer',
+                name: 'Typing Enhancer',
+                description: 'Dramatically increases typing damage',
+                level: 0,
+                unlockLevel: 8,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 600 },
+                effects: {
+                  typingDamageBonus: 0.25,
+                  energyProduction: -0.2
+                }
+              },
+              {
+                id: 'resource-synthesizer',
+                name: 'Resource Synthesizer',
+                description: 'Generates both scrap and energy efficiently',
+                level: 0,
+                unlockLevel: 9,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Scrap', amount: 800 },
+                effects: {
+                  scrapProduction: 4,
+                  energyProduction: 2,
+                  resourceBonus: 0.05
+                }
+              },
+              {
+                id: 'quantum-amplifier',
+                name: 'Quantum Amplifier',
+                description: 'Uses quantum mechanics to boost all production',
+                level: 0,
+                unlockLevel: 10,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 1000 },
+                effects: {
+                  scrapProduction: 3,
+                  energyProduction: 3,
+                  typingDamageBonus: 0.1,
+                  autoAttackBonus: 0.1,
+                  resourceBonus: 0.1
+                }
+              },
+              {
+                id: 'experience-matrix',
+                name: 'Experience Matrix',
+                description: 'Enhances experience gain through quantum computing',
+                level: 0,
+                unlockLevel: 12,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 1500 },
+                effects: {
+                  experienceBonus: 0.2,
+                  energyProduction: -1
+                }
+              },
+              {
+                id: 'ultimate-factory',
+                name: 'Ultimate Factory',
+                description: 'The pinnacle of factory technology',
+                level: 0,
+                unlockLevel: 15,
+                unlocked: false,
+                active: false,
+                baseCost: { resource: 'Energy', amount: 2000 },
+                effects: {
+                  scrapProduction: 10,
+                  energyProduction: 5,
+                  typingDamageBonus: 0.2,
+                  autoAttackBonus: 0.2,
+                  experienceBonus: 0.1,
+                  resourceBonus: 0.15
+                }
+              }
+            ]
+          };
+        }
+        return persistedState;
+      }
     }
   )
-);
+); 
 
-// Gun upgrade definitions
-export const gunUpgrades = [
-  {
-    id: 'pistol',
-    name: 'Pistol',
-    description: 'Basic sidearm (+5 damage)',
-    cost: 100,
-    damageBonus: 5
-  },
-  {
-    id: 'shotgun',
-    name: 'Shotgun',
-    description: 'Powerful short-range weapon (+15 damage)',
-    cost: 500,
-    damageBonus: 15
-  },
-  {
-    id: 'rifle',
-    name: 'Assault Rifle',
-    description: 'Rapid-fire weapon (+30 damage)',
-    cost: 2000,
-    damageBonus: 30
-  },
-  {
-    id: 'sniper',
-    name: 'Sniper Rifle',
-    description: 'High-powered precision weapon (+50 damage)',
-    cost: 5000,
-    damageBonus: 50
-  },
-  {
-    id: 'plasma',
-    name: 'Plasma Cannon',
-    description: 'Advanced energy weapon (+100 damage)',
-    cost: 15000,
-    damageBonus: 100
-  }
+// Define initial factories as a constant to use in migrations
+const initialFactories = [
+  // ... copy all the factories array here ...
 ]; 
